@@ -255,6 +255,26 @@ int main(void)
 	LLPD::gpio_digital_input_setup( EFFECT_BUTTON_PORT, EFFECT1_BUTTON_PIN, GPIO_PUPD::PULL_UP );
 	LLPD::gpio_digital_input_setup( EFFECT_BUTTON_PORT, EFFECT2_BUTTON_PIN, GPIO_PUPD::PULL_UP );
 
+	// SD Card setup and test
+	LLPD::gpio_output_setup( SD_CARD_CS_PORT, SD_CARD_CS_PIN, GPIO_PUPD::PULL_UP, GPIO_OUTPUT_TYPE::PUSH_PULL, GPIO_OUTPUT_SPEED::HIGH, false );
+	LLPD::gpio_output_set( SD_CARD_CS_PORT, SD_CARD_CS_PIN, true );
+	SDCard sdCard( SD_CARD_SPI_NUM, SD_CARD_CS_PORT, SD_CARD_CS_PIN, true );
+	sdCard.initialize();
+	LLPD::usart_log( LOGGING_USART_NUM, "sd card initialized..." );
+	// TODO comment the verification lines out if you're using the sd card for persistent memory
+	SharedData<uint8_t> sdCardValsToWrite = SharedData<uint8_t>::MakeSharedData( 3 );
+	sdCardValsToWrite[0] = 23; sdCardValsToWrite[1] = 87; sdCardValsToWrite[2] = 132;
+	sdCard.writeToMedia( sdCardValsToWrite, 54 );
+	SharedData<uint8_t> retVals3 = sdCard.readFromMedia( 3, 54 );
+	if ( retVals3[0] == 23 && retVals3[1] == 87 && retVals3[2] == 132 )
+	{
+		LLPD::usart_log( USART_NUM::USART_3, "sd card verified..." );
+	}
+	else
+	{
+		LLPD::usart_log( USART_NUM::USART_3, "WARNING!!! sd card failed verification..." );
+	}
+
 	// SRAM setup and test
 	std::vector<Sram_23K256_GPIO_Config> spiGpioConfigs;
 	spiGpioConfigs.emplace_back( SRAM_CS_PORT, SRAM1_CS_PIN );
