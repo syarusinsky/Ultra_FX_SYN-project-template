@@ -258,7 +258,7 @@ int main(void)
 	// SD Card setup and test
 	LLPD::gpio_output_setup( SD_CARD_CS_PORT, SD_CARD_CS_PIN, GPIO_PUPD::PULL_UP, GPIO_OUTPUT_TYPE::PUSH_PULL, GPIO_OUTPUT_SPEED::HIGH, false );
 	LLPD::gpio_output_set( SD_CARD_CS_PORT, SD_CARD_CS_PIN, true );
-	SDCard sdCard( SD_CARD_SPI_NUM, SD_CARD_CS_PORT, SD_CARD_CS_PIN, true );
+	SDCard sdCard( SD_CARD_SPI_NUM, SD_CARD_CS_PORT, SD_CARD_CS_PIN );
 	sdCard.initialize();
 	LLPD::usart_log( LOGGING_USART_NUM, "sd card initialized..." );
 	// TODO comment the verification lines out if you're using the sd card for persistent memory
