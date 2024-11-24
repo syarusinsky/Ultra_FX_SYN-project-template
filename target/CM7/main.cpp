@@ -9,6 +9,9 @@
 
 // global variables
 volatile bool adcSetupComplete = false; // should be set to true after adc has been initialized
+constexpr unsigned int numSquareWaveSamples = 80;
+volatile unsigned int squareWaveCurrentSampleNum = 0;
+volatile uint16_t squareWaveBuffer[numSquareWaveSamples];
 
 // peripheral defines
 #define OP_AMP1_INV_OUT_PORT 		GPIO_PORT::C
@@ -184,6 +187,29 @@ void disableUnusedPIns()
 
 int main(void)
 {
+	// TODO maybe move this stuff as well as caching to the HAL?
+	// disable mpu
+	__DMB();
+	SCB->SHCSR &= ~SCB_SHCSR_MEMFAULTENA_Msk;
+	MPU->CTRL = 0;
+	// region config for sram4 as non-cacheable
+	MPU->RNR = 0;
+	MPU->RBAR = D3_SRAM_BASE;
+	MPU->RASR = 	0 			 	<< 	MPU_RASR_XN_Pos 	|
+			ARM_MPU_AP_FULL 	 	<< 	MPU_RASR_AP_Pos 	|
+			0 			 	<< 	MPU_RASR_TEX_Pos 	|
+			0 			 	<< 	MPU_RASR_S_Pos 		|
+			0 			 	<< 	MPU_RASR_C_Pos 		|
+			0 			 	<< 	MPU_RASR_B_Pos 		|
+			0 			 	<< 	MPU_RASR_SRD_Pos 	|
+			ARM_MPU_REGION_SIZE_64KB 	<< 	MPU_RASR_SIZE_Pos 	|
+			1 				<< 	MPU_RASR_ENABLE_Pos;
+	// enable mpu
+	MPU->CTRL = MPU_CTRL_PRIVDEFENA_Msk | MPU_CTRL_ENABLE_Msk;
+	SCB->SHCSR |= SCB_SHCSR_MEMFAULTENA_Msk;
+	__DSB();
+	__ISB();
+
 	// setup clock 480MHz (also prescales peripheral clocks to fit rate limitations)
 	LLPD::rcc_clock_start_max_cpu1();
 
@@ -202,13 +228,13 @@ int main(void)
 				USART_STOP_BITS::BITS_1, 120000000, 9600 );
 	LLPD::usart_log( LOGGING_USART_NUM, "Ultra_FX_SYN starting up ----------------------------" );
 
-	// audio timer setup (for 40 kHz sampling rate at 480 MHz timer clock)
-	LLPD::tim6_counter_setup( 0, 6000, 40000 );
+	// audio timer setup (for 40 kHz sampling rate at 480 MHz / 2 timer clock)
+	LLPD::tim6_counter_setup( 0, 6000, 30000 );
 	LLPD::tim6_counter_enable_interrupts();
 	LLPD::usart_log( LOGGING_USART_NUM, "tim6 initialized..." );
 
 	// DAC setup
-	LLPD::dac_init( true );
+	LLPD::dac_init_use_dma( true );
 	LLPD::usart_log( LOGGING_USART_NUM, "dac initialized..." );
 
 	// Op Amp setup
@@ -351,6 +377,29 @@ int main(void)
 
 	LLPD::usart_log( LOGGING_USART_NUM, "Ultra_FX_SYN setup complete, entering while loop -------------------------------" );
 
+	// create audio buffer of 1KHz square wave
+	for ( unsigned int sampleNum = 0; sampleNum < numSquareWaveSamples; sampleNum++ )
+	{
+		if ( sampleNum < numSquareWaveSamples / 2 )
+		{
+			squareWaveBuffer[sampleNum] = 4095;
+		}
+		else
+		{
+			squareWaveBuffer[sampleNum] = 0;
+		}
+	}
+
+	// flush denormals
+	__set_FPSCR( __get_FPSCR() | (1 << 24) );
+
+	// enable instruction cache
+	SCB_EnableICache();
+
+	// enable data cache (will only be useful for constant values stored in flash)
+	SCB_InvalidateDCache();
+	SCB_EnableDCache();
+
 	while ( true )
 	{
 		LLPD::adc_perform_conversion_sequence( EFFECT_ADC_NUM );
@@ -377,13 +426,16 @@ extern "C" void TIM6_DAC_IRQHandler (void)
 {
 	if ( ! LLPD::tim6_isr_handle_delay() ) // if not currently in a delay function,...
 	{
-		if ( adcSetupComplete )
-		{
-			LLPD::adc_perform_conversion_sequence( AUDIO_IN_ADC_NUM );
-			uint16_t audioIn1 = LLPD::adc_get_channel_value( AUDIO_IN_ADC_NUM, AUDIO1_IN_ADC_CHANNEL );
-			uint16_t audioIn2 = LLPD::adc_get_channel_value( AUDIO_IN_ADC_NUM, AUDIO2_IN_ADC_CHANNEL );
-			LLPD::dac_send( audioIn1, audioIn2 );
-		}
+		// LLPD::dac_send( squareWaveBuffer[squareWaveCurrentSampleNum], squareWaveBuffer[squareWaveCurrentSampleNum] );
+		// squareWaveCurrentSampleNum = ( squareWaveCurrentSampleNum + 1 ) % numSquareWaveSamples;
+
+		// if ( adcSetupComplete )
+		// {
+		// 	LLPD::adc_perform_conversion_sequence( AUDIO_IN_ADC_NUM );
+		// 	uint16_t audioIn1 = LLPD::adc_get_channel_value( AUDIO_IN_ADC_NUM, AUDIO1_IN_ADC_CHANNEL );
+		// 	uint16_t audioIn2 = LLPD::adc_get_channel_value( AUDIO_IN_ADC_NUM, AUDIO2_IN_ADC_CHANNEL );
+		// 	LLPD::dac_send( audioIn1, audioIn2 );
+		// }
 	}
 
 	LLPD::tim6_counter_clear_interrupt_flag();
