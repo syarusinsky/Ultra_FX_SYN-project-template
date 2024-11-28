@@ -9,9 +9,10 @@
 
 // global variables
 volatile bool adcSetupComplete = false; // should be set to true after adc has been initialized
-constexpr unsigned int numSquareWaveSamples = 80;
+constexpr unsigned int numSquareWaveSamples = 80 * 2; // times 2 since it's left/right packed
 volatile unsigned int squareWaveCurrentSampleNum = 0;
-volatile uint16_t squareWaveBuffer[numSquareWaveSamples];
+volatile uint16_t* squareWaveBuffer1 = (uint16_t*) D2_AHBSRAM_BASE; // because we use DTCM and the DMA controller can't access that
+volatile uint16_t* squareWaveBuffer2 = ( (uint16_t*) D2_AHBSRAM_BASE ) + numSquareWaveSamples;
 
 // peripheral defines
 #define OP_AMP1_INV_OUT_PORT 		GPIO_PORT::C
@@ -234,7 +235,8 @@ int main(void)
 	LLPD::usart_log( LOGGING_USART_NUM, "tim6 initialized..." );
 
 	// DAC setup
-	LLPD::dac_init_use_dma( true );
+	// LLPD::dac_init( true );
+	LLPD::dac_init_use_dma( true, (uint32_t*) squareWaveBuffer1, (uint32_t*) squareWaveBuffer2, numSquareWaveSamples / 2 );
 	LLPD::usart_log( LOGGING_USART_NUM, "dac initialized..." );
 
 	// Op Amp setup
@@ -378,15 +380,21 @@ int main(void)
 	LLPD::usart_log( LOGGING_USART_NUM, "Ultra_FX_SYN setup complete, entering while loop -------------------------------" );
 
 	// create audio buffer of 1KHz square wave
-	for ( unsigned int sampleNum = 0; sampleNum < numSquareWaveSamples; sampleNum++ )
+	for ( unsigned int sampleNum = 0; sampleNum < numSquareWaveSamples / 2; sampleNum++ )
 	{
-		if ( sampleNum < numSquareWaveSamples / 2 )
+		if ( sampleNum < numSquareWaveSamples / 2 / 2)
 		{
-			squareWaveBuffer[sampleNum] = 4095;
+			squareWaveBuffer1[(sampleNum * 2) + 0] = 4095;
+			squareWaveBuffer1[(sampleNum * 2) + 1] = 4095;
+			squareWaveBuffer2[(sampleNum * 2) + 0] = 4095;
+			squareWaveBuffer2[(sampleNum * 2) + 1] = 4095;
 		}
 		else
 		{
-			squareWaveBuffer[sampleNum] = 0;
+			squareWaveBuffer1[(sampleNum * 2) + 0] = 0;
+			squareWaveBuffer1[(sampleNum * 2) + 1] = 0;
+			squareWaveBuffer2[(sampleNum * 2) + 0] = 0;
+			squareWaveBuffer2[(sampleNum * 2) + 1] = 0;
 		}
 	}
 
@@ -426,8 +434,8 @@ extern "C" void TIM6_DAC_IRQHandler (void)
 {
 	if ( ! LLPD::tim6_isr_handle_delay() ) // if not currently in a delay function,...
 	{
-		// LLPD::dac_send( squareWaveBuffer[squareWaveCurrentSampleNum], squareWaveBuffer[squareWaveCurrentSampleNum] );
-		// squareWaveCurrentSampleNum = ( squareWaveCurrentSampleNum + 1 ) % numSquareWaveSamples;
+		// LLPD::dac_send( squareWaveBuffer1[squareWaveCurrentSampleNum * 2], squareWaveBuffer1[squareWaveCurrentSampleNum * 2] );
+		// squareWaveCurrentSampleNum = ( squareWaveCurrentSampleNum + 1 ) % ( numSquareWaveSamples / 2 );
 
 		// if ( adcSetupComplete )
 		// {

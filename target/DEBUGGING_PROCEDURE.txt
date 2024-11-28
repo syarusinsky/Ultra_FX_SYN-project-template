@@ -24,4 +24,4 @@ CORE_M4:
 	4. debug as normal
 
 NOTES:
-	- Using openocd 1.11
+	- Using openocd from sourceforge, commit ff755a575ebf0218c2eb8745eff8050f8f02a53d
