@@ -230,8 +230,9 @@ int main(void)
 	LLPD::usart_log( LOGGING_USART_NUM, "Ultra_FX_SYN starting up ----------------------------" );
 
 	// audio timer setup (for 40 kHz sampling rate at 480 MHz / 2 timer clock)
-	LLPD::tim6_counter_setup( 0, 6000, 30000 );
-	LLPD::tim6_counter_enable_interrupts();
+	LLPD::tim6_counter_setup( 0, 6000, 40000 );
+	// if you wanted interrupts you could enable them with this
+	// LLPD::tim6_counter_enable_interrupts();
 	LLPD::usart_log( LOGGING_USART_NUM, "tim6 initialized..." );
 
 	// DAC setup
@@ -430,6 +431,7 @@ int main(void)
 	}
 }
 
+// not currently using tim6 interrupts, but this is how to do it
 extern "C" void TIM6_DAC_IRQHandler (void)
 {
 	if ( ! LLPD::tim6_isr_handle_delay() ) // if not currently in a delay function,...
